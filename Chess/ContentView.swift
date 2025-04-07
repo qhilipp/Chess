@@ -16,12 +16,7 @@ struct ContentView: View {
             Text("Hello, world!")
         }
         .padding()
-		.onAppear {
-			let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-			guard let board = ChessBoard(fen: fen) else { return }
-			print(board.description)
-			print(board.fen)
-		}
+		
     }
 }
 

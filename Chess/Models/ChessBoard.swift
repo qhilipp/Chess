@@ -142,8 +142,8 @@ struct ChessBoard: CustomStringConvertible {
 		guard let position else {
 			return nil
 		}
-		if position.0 > 0 && position.0 < 8 && position.1 > 0 && position.1 < 8 {
-			return String(Character(UnicodeScalar(position.0 + 97)!)) + String(position.1 + 1)
+		if position.0 >= 0 && position.0 < 8 && position.1 >= 0 && position.1 < 8 {
+			return String(Character(UnicodeScalar(position.0 + 97)!)) + String(8 - position.1)
 		} else {
 			return nil
 		}
