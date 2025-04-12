@@ -12,7 +12,7 @@ struct ChessBoard: CustomStringConvertible {
 	var squares: [[Piece?]]
 	var white: PlayerInformation
 	var black: PlayerInformation
-	var enPassant: (Int, Int)?
+	var enPassant: Position?
 	var isWhiteTurn: Bool = true
 	var halfMoves: Int = 0
 	var fullMoves: Int = 1
@@ -34,7 +34,7 @@ struct ChessBoard: CustomStringConvertible {
 			castleString += "q"
 		}
 		
-		let enPassant = ChessBoard.positionDescription(for: self.enPassant) ?? "-"
+		let enPassant = enPassant?.algebraic ?? "-"
 		
 		let halfMoves = String(self.halfMoves)
 		
@@ -72,6 +72,7 @@ struct ChessBoard: CustomStringConvertible {
 					rowStrings[rowStrings.endIndex.advanced(by: -1)] += String(gap)
 				}
 				rowStrings[rowStrings.endIndex.advanced(by: -1)] += piece.description
+				gap = 0
 			}
 		}
 		let positionString = rowStrings.joined(separator: "/")
@@ -80,7 +81,7 @@ struct ChessBoard: CustomStringConvertible {
 		return infoStrings.joined(separator: " ")
 	}
 	
-	init(squares: [[Piece]], white: PlayerInformation, black: PlayerInformation, enPassant: (Int, Int)?, isWhiteTurn: Bool, fullMoves: Int) {
+	init(squares: [[Piece]], white: PlayerInformation, black: PlayerInformation, enPassant: Position?, isWhiteTurn: Bool, fullMoves: Int) {
 		self.squares = squares
 		self.white = white
 		self.black = black
@@ -104,8 +105,8 @@ struct ChessBoard: CustomStringConvertible {
 				} else {
 					guard let piece = Piece(symbol: String(symbol)) else { return nil }
 					squares[boardRow][boardColumn] = piece
+					boardColumn += 1
 				}
-				boardColumn += 1
 			}
 		}
 		if !["w", "b"].contains(String(segments[1])) {
@@ -116,7 +117,7 @@ struct ChessBoard: CustomStringConvertible {
 		white = PlayerInformation(castleKing: segments[2].contains("K"), castleQueen: segments[2].contains("Q"))
 		black = PlayerInformation(castleKing: segments[2].contains("k"), castleQueen: segments[2].contains("q"))
 		
-		enPassant = ChessBoard.positionDescription(for: String(segments[3]))
+		enPassant = Position(algebraic: String(segments[3]))
 		
 		guard let halfMoves = Int(String(segments[4])) else { return nil }
 		self.halfMoves = halfMoves
@@ -125,27 +126,91 @@ struct ChessBoard: CustomStringConvertible {
 		self.fullMoves = fullMoves
 	}
 	
-	static func positionDescription(for description: String) -> (Int, Int)? {
-		if description.count != 2 {
-			return nil
+	func pseudoLegalMoves(for position: Position) -> [Position] {
+		guard let piece = self[position] else {
+			return []
 		}
-		if !"abcdefgh".contains(description.first!) {
-			return nil
+		var pseudoLegalMoves: [Position] = []
+		
+		switch piece.type {
+			case .king:
+				add(move: position.left, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right, to: &pseudoLegalMoves, from: piece)
+				add(move: position.above, to: &pseudoLegalMoves, from: piece)
+				add(move: position.below, to: &pseudoLegalMoves, from: piece)
+			case .queen:
+				add(for: \.left, to: &pseudoLegalMoves, from: position)
+				add(for: \.right, to: &pseudoLegalMoves, from: position)
+				add(for: \.above, to: &pseudoLegalMoves, from: position)
+				add(for: \.below, to: &pseudoLegalMoves, from: position)
+				
+				add(for: \.left?.above, to: &pseudoLegalMoves, from: position)
+				add(for: \.right?.above, to: &pseudoLegalMoves, from: position)
+				add(for: \.left?.below, to: &pseudoLegalMoves, from: position)
+				add(for: \.right?.below, to: &pseudoLegalMoves, from: position)
+			case .rook:
+				add(for: \.left, to: &pseudoLegalMoves, from: position)
+				add(for: \.right, to: &pseudoLegalMoves, from: position)
+				add(for: \.above, to: &pseudoLegalMoves, from: position)
+				add(for: \.below, to: &pseudoLegalMoves, from: position)
+			case .bishop:
+				add(for: \.left?.above, to: &pseudoLegalMoves, from: position)
+				add(for: \.right?.above, to: &pseudoLegalMoves, from: position)
+				add(for: \.left?.below, to: &pseudoLegalMoves, from: position)
+				add(for: \.right?.below, to: &pseudoLegalMoves, from: position)
+			case .knight:
+				add(move: position.left?.above?.above, to: &pseudoLegalMoves, from: piece)
+				add(move: position.left?.left?.above, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right?.above?.above, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right?.right?.above, to: &pseudoLegalMoves, from: piece)
+				
+				add(move: position.left?.below?.below, to: &pseudoLegalMoves, from: piece)
+				add(move: position.left?.left?.below, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right?.below?.below, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right?.right?.below, to: &pseudoLegalMoves, from: piece)
+			case .pawn:
+				add(move: piece.isWhite ? position.above : position.below, to: &pseudoLegalMoves, from: piece)
+			case .none:
+				break
 		}
-		guard let number = Int(String(description.last!)) else {
-			return nil
-		}
-		return (Int(description.first!.asciiValue!) - 97, number - 1)
+		
+		return pseudoLegalMoves
 	}
 	
-	static func positionDescription(for position: (Int, Int)?) -> String? {
-		guard let position else {
-			return nil
+	func legalMoves(for position: Position) -> [Position] {
+		pseudoLegalMoves(for: position)
+	}
+	
+	mutating func move(from: Position, to: Position) throws {
+		if from.x == to.x && from.y == to.y {
+			throw BoardException.moveToSameField
 		}
-		if position.0 >= 0 && position.0 < 8 && position.1 >= 0 && position.1 < 8 {
-			return String(Character(UnicodeScalar(position.0 + 97)!)) + String(8 - position.1)
-		} else {
-			return nil
+		guard let piece = self[from] else {
+			throw BoardException.noPieceToMove
+		}
+		
+		halfMoves += 1
+		
+		if piece.type == .pawn || self[to] != nil {
+			halfMoves = 0
+		}
+		
+		if !isWhiteTurn {
+			fullMoves += 1
+		}
+		
+		self[from] = nil
+		self[to] = piece
+		
+		isWhiteTurn.toggle()
+	}
+	
+	subscript(_ position: Position) -> Piece? {
+		get {
+			squares[position.y][position.x]
+		}
+		set {
+			squares[position.y][position.x] = newValue
 		}
 	}
 }
@@ -166,6 +231,10 @@ struct Piece: CustomStringConvertible {
 	
 	var description: String {
 		isWhite ? type.rawValue.uppercased() : type.rawValue
+	}
+	
+	var assetName: String {
+		"\(isWhite ? "White" : "Black")_\(self.type.rawValue)"
 	}
 	
 	init(isWhite: Bool, type: PieceType) {
@@ -193,4 +262,40 @@ enum PieceType: String {
 	case knight = "n"
 	case pawn = "p"
 	case none = "-"
+}
+
+enum BoardException: Error {
+	case moveToSameField
+	case noPieceToMove
+}
+
+enum PotentialMoveClassification {
+	case free
+	case attack
+	case blocked
+}
+
+extension ChessBoard {
+	
+	@discardableResult
+	func add(move position: Position?, to list: inout [Position], from piece: Piece) -> PotentialMoveClassification {
+		guard let position else { return .blocked }
+		if let otherPiece = self[position] {
+			if piece.isWhite == otherPiece.isWhite {
+				return .attack
+			}
+		}
+		list.append(position)
+		return .free
+	}
+	
+	func add(for keyPath: KeyPath<Position, Position?>, to list: inout [Position], from start: Position) {
+		guard let piece = self[start] else {
+			return
+		}
+		var position: Position? = start
+		repeat {
+			position = position?[keyPath: keyPath]
+		} while add(move: position, to: &list, from: piece) == .free
+	}
 }
