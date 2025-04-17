@@ -30,7 +30,7 @@ struct ChessBoardView: View {
 	
     var body: some View {
 		VStack {
-			Text(chessGame.board.fen)
+			Text("White check: \(chessGame.board.isCheck(forWhite: true)), Black check: \(chessGame.board.isCheck(forWhite: false))")
 			Canvas { context, size in
 				let boardSize: Int = Int(min(size.width, size.height))
 				let fieldSize: Int = boardSize / 8
@@ -70,12 +70,28 @@ struct ChessBoardView: View {
 			}
 			.frame(width: 504, height: 504)
 			.onTapGesture { location in
-				let newSelection = pixelToField((Int(location.x), Int(location.y)), for: CGSize(width: 504, height: 504))
+				guard let newSelection = pixelToField((Int(location.x), Int(location.y)), for: CGSize(width: 504, height: 504)) else {
+					selected = nil
+					return
+				}
+				if let selected, possibleMoves.contains(newSelection) {
+					do throws(BoardException) {
+						try chessGame.board.move(from: selected, to: newSelection)
+					} catch {
+						print(error.localizedDescription)
+					}
+					self.selected = nil
+					return
+				}
 				guard newSelection != selected else {
 					selected = nil
 					return
 				}
-				selected = newSelection
+				if chessGame.board[newSelection] == nil {
+					selected = nil
+				} else {
+					selected = newSelection
+				}
 			}
 		}
     }

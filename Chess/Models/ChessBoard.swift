@@ -34,6 +34,10 @@ struct ChessBoard: CustomStringConvertible {
 			castleString += "q"
 		}
 		
+		if castleString.isEmpty {
+			castleString = "-"
+		}
+		
 		let enPassant = enPassant?.algebraic ?? "-"
 		
 		let halfMoves = String(self.halfMoves)
@@ -81,6 +85,20 @@ struct ChessBoard: CustomStringConvertible {
 		return infoStrings.joined(separator: " ")
 	}
 	
+	var currentPlayer: PlayerInformation {
+		get {
+			isWhiteTurn ? white : black
+		}
+		
+		set {
+			if isWhiteTurn {
+				white = newValue
+			} else {
+				black = newValue
+			}
+		}
+	}
+	
 	init(squares: [[Piece]], white: PlayerInformation, black: PlayerInformation, enPassant: Position?, isWhiteTurn: Bool, fullMoves: Int) {
 		self.squares = squares
 		self.white = white
@@ -126,6 +144,38 @@ struct ChessBoard: CustomStringConvertible {
 		self.fullMoves = fullMoves
 	}
 	
+	func kingPosition(forWhite isWhite: Bool) -> Position? {
+		for x in 0..<8 {
+			for y in 0..<8 {
+				if self[Position(x, y)!] == Piece(isWhite: isWhite, type: .king) {
+					return Position(x, y)!
+				}
+			}
+		}
+		return nil
+	}
+	
+	func attackingPositions(ofWhite isWhite: Bool) -> [Position] {
+		var positions: Set<Position> = []
+		for piecePosition in piecePositions(ofWhite: isWhite) {
+			positions.formUnion(pseudoLegalMoves(for: piecePosition))
+		}
+		return Array(positions)
+	}
+	
+	// This could be cached in the future
+	func piecePositions(ofWhite isWhite: Bool) -> [Position] {
+		var positions: [Position] = []
+		for x in 0..<8 {
+			for y in 0..<8 {
+				if self[Position(x, y)!]?.isWhite == isWhite {
+					positions.append(Position(x, y)!)
+				}
+			}
+		}
+		return positions
+	}
+	
 	func pseudoLegalMoves(for position: Position) -> [Position] {
 		guard let piece = self[position] else {
 			return []
@@ -138,6 +188,11 @@ struct ChessBoard: CustomStringConvertible {
 				add(move: position.right, to: &pseudoLegalMoves, from: piece)
 				add(move: position.above, to: &pseudoLegalMoves, from: piece)
 				add(move: position.below, to: &pseudoLegalMoves, from: piece)
+				
+				add(move: position.left?.above, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right?.above, to: &pseudoLegalMoves, from: piece)
+				add(move: position.left?.below, to: &pseudoLegalMoves, from: piece)
+				add(move: position.right?.below, to: &pseudoLegalMoves, from: piece)
 			case .queen:
 				add(for: \.left, to: &pseudoLegalMoves, from: position)
 				add(for: \.right, to: &pseudoLegalMoves, from: position)
@@ -169,7 +224,32 @@ struct ChessBoard: CustomStringConvertible {
 				add(move: position.right?.below?.below, to: &pseudoLegalMoves, from: piece)
 				add(move: position.right?.right?.below, to: &pseudoLegalMoves, from: piece)
 			case .pawn:
-				add(move: piece.isWhite ? position.above : position.below, to: &pseudoLegalMoves, from: piece)
+				let direction: KeyPath<Position, Position?> = piece.isWhite ? \.above : \.below
+				
+				if let singleMove = position[keyPath: direction], self[singleMove] == nil {
+					add(move: singleMove, to: &pseudoLegalMoves, from: piece)
+					
+					let isOnHomeRow = position.y == (piece.isWhite ? 6 : 1)
+					if let doubleMove = position[keyPath: direction]?[keyPath: direction], isOnHomeRow, self[doubleMove] == nil {
+						add(move: doubleMove, to: &pseudoLegalMoves, from: piece)
+					}
+				}
+				
+				if let otherPosition = position.left?[keyPath: direction] {
+					let canCapture = if let otherPiece = self[otherPosition], otherPiece.isWhite != piece.isWhite { true } else { false }
+					let canEnPassant = otherPosition == enPassant
+					if canCapture || canEnPassant {
+						add(move: otherPosition, to: &pseudoLegalMoves, from: piece)
+					}
+				}
+				
+				if let otherPosition = position.right?[keyPath: direction] {
+					let canCapture = if let otherPiece = self[otherPosition], otherPiece.isWhite != piece.isWhite { true } else { false }
+					let canEnPassant = otherPosition == enPassant
+					if canCapture || canEnPassant {
+						add(move: otherPosition, to: &pseudoLegalMoves, from: piece)
+					}
+				}
 			case .none:
 				break
 		}
@@ -177,11 +257,29 @@ struct ChessBoard: CustomStringConvertible {
 		return pseudoLegalMoves
 	}
 	
-	func legalMoves(for position: Position) -> [Position] {
-		pseudoLegalMoves(for: position)
+	func isCheck(forWhite isWhite: Bool) -> Bool {
+		let kingPosition = kingPosition(forWhite: isWhite)!
+		for x in 0..<8 {
+			for y in 0..<8 {
+				if self[Position(x, y)!]?.isWhite == isWhite {
+					if pseudoLegalMoves(for: Position(x, y)!).contains(kingPosition) {
+						return true
+					}
+				}
+			}
+		}
+		return false
 	}
 	
-	mutating func move(from: Position, to: Position) throws {
+	func legalMoves(for position: Position) -> [Position] {
+		pseudoLegalMoves(for: position).filter { newPosition in
+			var copy = self
+			try! copy.move(from: position, to: newPosition)
+			return !copy.isCheck(forWhite: !copy.isWhiteTurn)
+		}
+	}
+	
+	mutating func move(from: Position, to: Position) throws(BoardException) {
 		if from.x == to.x && from.y == to.y {
 			throw BoardException.moveToSameField
 		}
@@ -189,10 +287,33 @@ struct ChessBoard: CustomStringConvertible {
 			throw BoardException.noPieceToMove
 		}
 		
+		if to == enPassant {
+			self[Position(to.x, from.y)!] = nil
+		}
+		
+		enPassant = nil
+		
 		halfMoves += 1
 		
 		if piece.type == .pawn || self[to] != nil {
 			halfMoves = 0
+		}
+		
+		if piece.type == .king {
+			currentPlayer.castleKing = false
+			currentPlayer.castleQueen = false
+		}
+		
+		if piece.type == .rook {
+			if from.x == 0 {
+				currentPlayer.castleQueen = false
+			} else {
+				currentPlayer.castleKing = false
+			}
+		}
+		
+		if piece.type == .pawn && abs(from.y - to.y) == 2 {
+			enPassant = Position(from.x, (from.y + to.y) / 2)
 		}
 		
 		if !isWhiteTurn {
@@ -200,7 +321,11 @@ struct ChessBoard: CustomStringConvertible {
 		}
 		
 		self[from] = nil
-		self[to] = piece
+		if piece.type == .pawn && (to.y == 0 || to.y == 7) {
+			self[to] = Piece(isWhite: piece.isWhite, type: .queen)
+		} else {
+			self[to] = piece
+		}
 		
 		isWhiteTurn.toggle()
 	}
@@ -225,7 +350,7 @@ struct PlayerInformation {
 	}
 }
 
-struct Piece: CustomStringConvertible {
+struct Piece: CustomStringConvertible, Equatable {
 	let isWhite: Bool
 	let type: PieceType
 	
@@ -252,6 +377,10 @@ struct Piece: CustomStringConvertible {
 		type = pieceType
 		isWhite = symbol[symbol.startIndex].isUppercase
 	}
+	
+	static func ==(lhs: Piece, rhs: Piece) -> Bool {
+		lhs.isWhite == rhs.isWhite && lhs.type == rhs.type
+	}
 }
 
 enum PieceType: String {
@@ -271,7 +400,7 @@ enum BoardException: Error {
 
 enum PotentialMoveClassification {
 	case free
-	case attack
+	case capture
 	case blocked
 }
 
@@ -282,7 +411,10 @@ extension ChessBoard {
 		guard let position else { return .blocked }
 		if let otherPiece = self[position] {
 			if piece.isWhite == otherPiece.isWhite {
-				return .attack
+				return .blocked
+			} else {
+				list.append(position)
+				return .capture
 			}
 		}
 		list.append(position)
