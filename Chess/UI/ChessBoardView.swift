@@ -30,7 +30,7 @@ struct ChessBoardView: View {
 	
     var body: some View {
 		VStack {
-			Text("White check: \(chessGame.board.isCheck(forWhite: true)), Black check: \(chessGame.board.isCheck(forWhite: false))")
+            Text("White in checkmate: \(chessGame.board.isCheckMate(forWhite: true)), Black in checkmate: \(chessGame.board.isCheckMate(forWhite: false))")
 			Canvas { context, size in
 				let boardSize: Int = Int(min(size.width, size.height))
 				let fieldSize: Int = boardSize / 8

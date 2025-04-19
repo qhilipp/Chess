@@ -7,10 +7,14 @@
 
 import Foundation
 
-struct Position: Equatable, Hashable {
+struct Position: Equatable, Hashable, Identifiable {
 	
 	var x: Int
 	var y: Int
+    
+    var id: String {
+        algebraic
+    }
 	
 	var algebraic: String {
 		String(Character(UnicodeScalar(x + 97)!)) + String(8 - y)

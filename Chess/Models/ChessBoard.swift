@@ -257,11 +257,15 @@ struct ChessBoard: CustomStringConvertible {
 		return pseudoLegalMoves
 	}
 	
+    func isCheckMate(forWhite isWhite: Bool) -> Bool {
+        isCheck(forWhite: isWhite) && legalMoves(forWhite: isWhite).isEmpty
+    }
+    
 	func isCheck(forWhite isWhite: Bool) -> Bool {
 		let kingPosition = kingPosition(forWhite: isWhite)!
 		for x in 0..<8 {
 			for y in 0..<8 {
-				if self[Position(x, y)!]?.isWhite == isWhite {
+				if self[Position(x, y)!]?.isWhite == !isWhite {
 					if pseudoLegalMoves(for: Position(x, y)!).contains(kingPosition) {
 						return true
 					}
@@ -278,6 +282,19 @@ struct ChessBoard: CustomStringConvertible {
 			return !copy.isCheck(forWhite: !copy.isWhiteTurn)
 		}
 	}
+    
+    func legalMoves(forWhite isWhite: Bool) -> [Position: [Position]] {
+        var moves: [Position: [Position]] = [:]
+        for x in 0..<8 {
+            for y in 0..<8 {
+                let position = Position(x, y)!
+                if self[position]?.isWhite == isWhite {
+                    moves[position] = legalMoves(for: position)
+                }
+            }
+        }
+        return moves
+    }
 	
 	mutating func move(from: Position, to: Position) throws(BoardException) {
 		if from.x == to.x && from.y == to.y {
