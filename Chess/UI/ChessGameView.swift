@@ -8,8 +8,25 @@
 import SwiftUI
 
 struct ChessGameView: View {
+    
+    @AppStorage("showInspector") var showInspector = false
+    @State var chessGame = ChessGame()
+    
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        ChessBoardView(chessGame: chessGame)
+            .toolbar {
+                ToolbarItem {
+                    Button {
+                        showInspector.toggle()
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                }
+            }
+            .inspector(isPresented: $showInspector) {
+                ChessStatsView(chessGame: chessGame)
+            }
+            .listStyle(.sidebar)
     }
 }
 

@@ -10,37 +10,62 @@ import SwiftUI
 struct ChessStatsView: View {
     
     @State var chessGame: ChessGame
+    @State var shownLegalMoves: Bool? = nil
+    @State var showWhiteLegalMoves = false
+    @State var showBlackLegalMoves = false
     
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("White") {
-                    basicStats(forWhite: true)
-                }
-                Section("Black") {
-                    basicStats(forWhite: false)
-                }
+        Form {
+            Section("FEN") {
+                CopyableTokenView(text: chessGame.board.fen)
             }
-            .formStyle(.grouped)
+            Section("White") {
+                BasicStats(chessGame: chessGame, isWhite: true)
+            }
+            Section("Black") {
+                BasicStats(chessGame: chessGame, isWhite: false)
+            }
         }
+        .formStyle(.grouped)
     }
+}
+
+struct BasicStats: View {
     
-    @ViewBuilder
-    func basicStats(forWhite isWhite: Bool) -> some View {
-        LabeledContent("Has turn", value: chessGame.board.isWhiteTurn.description)
+    @State var chessGame: ChessGame
+    @State var showLegalMoves = false
+    @State var showPiecePositions = false
+    let isWhite: Bool
+    
+    var body: some View {
+        LabeledContent("Has turn", value: (chessGame.board.isWhiteTurn == isWhite).description)
         LabeledContent("Check", value: chessGame.board.isCheck(forWhite: isWhite).description)
         LabeledContent("Checkmate", value: chessGame.board.isCheckMate(forWhite: isWhite).description)
-        LabeledContent("King position", value: chessGame.board.kingPosition(forWhite: isWhite)!.algebraic)
-        NavigationLink {
-            movesList(for: chessGame.board.legalMoves(forWhite: isWhite))
+		LabeledContent("Queenside castling", value : chessGame.board.white.castleQueen.description)
+		LabeledContent("Kingside castling", value : chessGame.board.white.castleKing.description)
+        Button {
+            showPiecePositions = true
         } label: {
-            LabeledContent("Legal moves", value: chessGame.board.legalMoves(forWhite: isWhite).count.description)
+            LabeledContent("Pieces", value: chessGame.board.piecePositions(forWhite: isWhite).count.description)
+        }
+        .popover(isPresented: $showPiecePositions) {
+			List(chessGame.board.piecePositions(forWhite: isWhite).sorted(by: { $0.algebraic < $1.algebraic })) { position in
+                Text("\(position.algebraic) - \(chessGame.board[position]!.type)")
+            }
+        }
+        Button {
+            showLegalMoves = true
+        } label: {
+            LabeledContent("Legal moves", value: chessGame.board.countOfLegalMoves(forWhite: isWhite).description)
+        }
+        .popover(isPresented: $showLegalMoves) {
+            movesList(for: chessGame.board.legalMoves(forWhite: isWhite))
         }
     }
     
     @ViewBuilder
     func movesList(for moveMap: [Position: [Position]]) -> some View {
-        List(Array(moveMap.keys)) { from in
+		List(moveMap.keys.sorted(by: { $0.algebraic < $1.algebraic })) { from in
             if let moves = moveMap[from], !moves.isEmpty {
                 Section("\(from.algebraic) - \(chessGame.board[from]!.type)") {
                     moveList(for: moves)
