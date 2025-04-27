@@ -114,7 +114,13 @@ struct ChessBoard: CustomStringConvertible {
 		guard segments.count == 6 else { return nil }
 		
 		let rows = segments[0].split(separator: "/")
+		
+		if rows.count != 8 {
+			return nil
+		}
+		
 		squares = Array(repeating: Array(repeating: nil, count: 8), count: 8)
+		
 		for (boardRow, row) in rows.enumerated() {
 			var boardColumn = 0
 			for symbol in row {
@@ -127,6 +133,7 @@ struct ChessBoard: CustomStringConvertible {
 				}
 			}
 		}
+		
 		if !["w", "b"].contains(String(segments[1])) {
 			return nil
 		}
@@ -144,178 +151,85 @@ struct ChessBoard: CustomStringConvertible {
 		self.fullMoves = fullMoves
 	}
 	
-	func kingPosition(forWhite isWhite: Bool) -> Position? {
-		for x in 0..<8 {
-			for y in 0..<8 {
-				if self[Position(x, y)!] == Piece(isWhite: isWhite, type: .king) {
-					return Position(x, y)!
-				}
-			}
+	subscript(_ position: Position) -> Piece? {
+		get {
+			squares[position.y][position.x]
 		}
-		return nil
+		set {
+			squares[position.y][position.x] = newValue
+		}
+	}
+}
+
+struct PlayerInformation {
+	var castleKing: Bool
+	var castleQueen: Bool
+	
+	init(castleKing: Bool, castleQueen: Bool) {
+		self.castleKing = castleKing
+		self.castleQueen = castleQueen
+	}
+}
+
+public enum MoveException: Error {
+	case moveToSameField
+	case noPieceToMove
+}
+
+enum RemisReason {
+	case stalemate
+	case repetition
+	case fiftyMoves
+	case impossibleCheckmate
+	case consent
+	case timeOut
+	
+	var explanation: String {
+		switch self {
+			case .stalemate: "Stalemate"
+			case .repetition: "the same position three moves ago"
+			case .fiftyMoves: "50 moves without capturing a piece or moving a pawn"
+			case .impossibleCheckmate: "checkmate being impossible"
+			case .consent: "both players agreeing for a Remis"
+			case .timeOut: "a time out"
+		}
+	}
+}
+
+// MARK: Outcomes
+extension ChessBoard {
+	
+	func isCheckmateImpossible(forWhite isWhite: Bool) -> Bool {
+		let pieces = piecePositions(forWhite: isWhite).compactMap { self[$0] }
+		guard pieces.count <= 2 else { return false }
+		if pieces.contains(Piece(isWhite: isWhite, type: .bishop)) || pieces.contains(Piece(isWhite: isWhite, type: .knight)) {
+			return true
+		}
+		return pieces.count == 1
 	}
 	
-	func attackingPositions(ofWhite isWhite: Bool) -> [Position] {
-		var positions: Set<Position> = []
-		for piecePosition in piecePositions(forWhite: isWhite) {
-			positions.formUnion(pseudoLegalMoves(for: piecePosition))
-		}
-		return Array(positions)
+	func remis() -> RemisReason? {
+		remis(forWhite: isWhiteTurn) ?? remis(forWhite: !isWhiteTurn)
 	}
 	
-	// This could be cached in the future
-	func piecePositions(forWhite isWhite: Bool) -> [Position] {
-		var positions: [Position] = []
-		for x in 0..<8 {
-			for y in 0..<8 {
-				if self[Position(x, y)!]?.isWhite == isWhite {
-					positions.append(Position(x, y)!)
-				}
-			}
+	func remis(forWhite isWhite: Bool) -> RemisReason? {
+		if isCheckmateImpossible(forWhite: isWhite) {
+			.impossibleCheckmate
+		} else if !isCheck(forWhite: isWhite) && legalMoves(forWhite: isWhite).isEmpty {
+			.stalemate
+		} else {
+			nil
 		}
-		return positions
 	}
 	
-	func pseudoLegalMoves(for position: Position) -> [Position] {
-		guard let piece = self[position] else {
-			return []
-		}
-		var pseudoLegalMoves: [Position] = []
-		
-		switch piece.type {
-			case .king:
-				add(move: position.left, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right, to: &pseudoLegalMoves, from: piece)
-				add(move: position.above, to: &pseudoLegalMoves, from: piece)
-				add(move: position.below, to: &pseudoLegalMoves, from: piece)
-				
-				add(move: position.left?.above, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right?.above, to: &pseudoLegalMoves, from: piece)
-				add(move: position.left?.below, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right?.below, to: &pseudoLegalMoves, from: piece)
-            
-				if position.x != 4 {
-					break
-				}
-				
-                let color = piece.isWhite ? white : black
-                if color.castleKing &&
-					self[position.right!] == nil &&
-					self[position.right!.right!] == nil &&
-                    attackerCount(forWhite: piece.isWhite, at: position.right!) == 0 &&
-                    attackerCount(forWhite: piece.isWhite, at: position.right!.right!) == 0
-                {
-					pseudoLegalMoves.append(position.right!.right!)
-                }
-                if color.castleQueen &&
-					self[position.left!] == nil &&
-					self[position.left!.left!] == nil &&
-					self[position.left!.left!.left!] == nil &&
-                    attackerCount(forWhite: piece.isWhite, at: position.left!) == 0 &&
-                    attackerCount(forWhite: piece.isWhite, at: position.left!.left!) == 0 &&
-                    attackerCount(forWhite: piece.isWhite, at: position.left!.left!.left!) == 0
-                {
-					pseudoLegalMoves.append(position.left!.left!.left!)
-                }
-			case .queen:
-				add(direction: \.left, to: &pseudoLegalMoves, from: position)
-				add(direction: \.right, to: &pseudoLegalMoves, from: position)
-				add(direction: \.above, to: &pseudoLegalMoves, from: position)
-				add(direction: \.below, to: &pseudoLegalMoves, from: position)
-				
-				add(direction: \.left?.above, to: &pseudoLegalMoves, from: position)
-				add(direction: \.right?.above, to: &pseudoLegalMoves, from: position)
-				add(direction: \.left?.below, to: &pseudoLegalMoves, from: position)
-				add(direction: \.right?.below, to: &pseudoLegalMoves, from: position)
-			case .rook:
-				add(direction: \.left, to: &pseudoLegalMoves, from: position)
-				add(direction: \.right, to: &pseudoLegalMoves, from: position)
-				add(direction: \.above, to: &pseudoLegalMoves, from: position)
-				add(direction: \.below, to: &pseudoLegalMoves, from: position)
-			case .bishop:
-				add(direction: \.left?.above, to: &pseudoLegalMoves, from: position)
-				add(direction: \.right?.above, to: &pseudoLegalMoves, from: position)
-				add(direction: \.left?.below, to: &pseudoLegalMoves, from: position)
-				add(direction: \.right?.below, to: &pseudoLegalMoves, from: position)
-			case .knight:
-				add(move: position.left?.above?.above, to: &pseudoLegalMoves, from: piece)
-				add(move: position.left?.left?.above, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right?.above?.above, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right?.right?.above, to: &pseudoLegalMoves, from: piece)
-				
-				add(move: position.left?.below?.below, to: &pseudoLegalMoves, from: piece)
-				add(move: position.left?.left?.below, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right?.below?.below, to: &pseudoLegalMoves, from: piece)
-				add(move: position.right?.right?.below, to: &pseudoLegalMoves, from: piece)
-			case .pawn:
-				let direction: KeyPath<Position, Position?> = piece.isWhite ? \.above : \.below
-				
-				if let singleMove = position[keyPath: direction], self[singleMove] == nil {
-					add(move: singleMove, to: &pseudoLegalMoves, from: piece)
-					
-					let isOnHomeRow = position.y == (piece.isWhite ? 6 : 1)
-					if let doubleMove = position[keyPath: direction]?[keyPath: direction], isOnHomeRow, self[doubleMove] == nil {
-						add(move: doubleMove, to: &pseudoLegalMoves, from: piece)
-					}
-				}
-				
-				if let otherPosition = position.left?[keyPath: direction] {
-					let canCapture = if let otherPiece = self[otherPosition], otherPiece.isWhite != piece.isWhite { true } else { false }
-					let canEnPassant = otherPosition == enPassant
-					if canCapture || canEnPassant {
-						add(move: otherPosition, to: &pseudoLegalMoves, from: piece)
-					}
-				}
-				
-				if let otherPosition = position.right?[keyPath: direction] {
-					let canCapture = if let otherPiece = self[otherPosition], otherPiece.isWhite != piece.isWhite { true } else { false }
-					let canEnPassant = otherPosition == enPassant
-					if canCapture || canEnPassant {
-						add(move: otherPosition, to: &pseudoLegalMoves, from: piece)
-					}
-				}
-			case .none:
-				break
-		}
-		
-		return pseudoLegalMoves
+	func isCheckMate(forWhite isWhite: Bool) -> Bool {
+		isCheck(forWhite: isWhite) && legalMoves(forWhite: isWhite).isEmpty
 	}
-    
-    func countOfLegalMoves(forWhite isWhite: Bool) -> Int {
-        countOfLegalMoves(moveDict: legalMoves(forWhite: isWhite))
-    }
-    
-    func countOfLegalMoves(moveDict: [Position: [Position]]) -> Int {
-        moveDict.filter { !$0.value.isEmpty }.count
-    }
-    
-    func isCheckmateImpossible(forWhite isWhite: Bool) -> Bool {
-        let pieces = piecePositions(forWhite: isWhite).compactMap { self[$0] }
-        guard pieces.count <= 2 else { return false }
-        if pieces.contains(Piece(isWhite: isWhite, type: .bishop)) || pieces.contains(Piece(isWhite: isWhite, type: .knight)) {
-            return true
-        }
-        return pieces.count == 1
-    }
-    
-    func remis(forWhite isWhite: Bool) -> RemisReason? {
-        if isCheckmateImpossible(forWhite: isWhite) {
-            .impossibleCheckmate
-        } else if !isCheck(forWhite: isWhite) && countOfLegalMoves(forWhite: isWhite) == 0 {
-            .stalemate
-        } else {
-            nil
-        }
-    }
 	
-    func isCheckMate(forWhite isWhite: Bool) -> Bool {
-        isCheck(forWhite: isWhite) && countOfLegalMoves(forWhite: isWhite) == 0
-    }
-    
 	func isCheck(forWhite isWhite: Bool) -> Bool {
-        guard let kingPosition = kingPosition(forWhite: isWhite) else {
-            return true
-        }
+		guard let kingPosition = kingPosition(forWhite: isWhite) else {
+			return true
+		}
 		for x in 0..<8 {
 			for y in 0..<8 {
 				if self[Position(x, y)!]?.isWhite == !isWhite {
@@ -328,36 +242,147 @@ struct ChessBoard: CustomStringConvertible {
 		return false
 	}
 	
-	func legalMoves(for position: Position) -> [Position] {
-		pseudoLegalMoves(for: position).filter { newPosition in
+	func kingPosition(forWhite isWhite: Bool) -> Position? {
+		for x in 0..<8 {
+			for y in 0..<8 {
+				if self[Position(x, y)!] == Piece(isWhite: isWhite, type: .king) {
+					return Position(x, y)!
+				}
+			}
+		}
+		return nil
+	}
+}
+
+// MARK: Moves
+extension ChessBoard {
+	
+	func pseudoLegalMoves(for position: Position, friendlyFire: Bool = false) -> [Position] {
+		guard let piece = self[position] else {
+			return []
+		}
+		var pseudoLegalMoves: [Position] = []
+		
+		switch piece.type {
+			case .king:
+				add(move: position.left, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				
+				add(move: position.left?.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right?.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.left?.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right?.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+			
+				if position.x != 4 {
+					break
+				}
+				
+				let color = piece.isWhite ? white : black
+				if color.castleKing &&
+					self[position.right!] == nil &&
+					self[position.right!.right!] == nil &&
+					attackers(forWhite: piece.isWhite, at: position.right!).isEmpty &&
+					attackers(forWhite: piece.isWhite, at: position.right!.right!).isEmpty
+				{
+					pseudoLegalMoves.append(position.right!.right!)
+				}
+				if color.castleQueen &&
+					self[position.left!] == nil &&
+					self[position.left!.left!] == nil &&
+					self[position.left!.left!.left!] == nil &&
+					attackers(forWhite: piece.isWhite, at: position.left!).isEmpty &&
+					attackers(forWhite: piece.isWhite, at: position.left!.left!).isEmpty &&
+					attackers(forWhite: piece.isWhite, at: position.left!.left!.left!).isEmpty
+				{
+					pseudoLegalMoves.append(position.left!.left!.left!)
+				}
+			case .queen:
+				add(direction: \.left, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.right, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.above, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.below, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				
+				add(direction: \.left?.above, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.right?.above, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.left?.below, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.right?.below, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+			case .rook:
+				add(direction: \.left, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.right, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.above, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.below, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+			case .bishop:
+				add(direction: \.left?.above, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.right?.above, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.left?.below, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+				add(direction: \.right?.below, to: &pseudoLegalMoves, from: position, friendlyFire: friendlyFire)
+			case .knight:
+				add(move: position.left?.above?.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.left?.left?.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right?.above?.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right?.right?.above, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				
+				add(move: position.left?.below?.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.left?.left?.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right?.below?.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+				add(move: position.right?.right?.below, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+			case .pawn:
+				let direction: KeyPath<Position, Position?> = piece.isWhite ? \.above : \.below
+				
+				if let singleMove = position[keyPath: direction], self[singleMove] == nil {
+					add(move: singleMove, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+					
+					let isOnHomeRow = position.y == (piece.isWhite ? 6 : 1)
+					if let doubleMove = position[keyPath: direction]?[keyPath: direction], isOnHomeRow, self[doubleMove] == nil {
+						add(move: doubleMove, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+					}
+				}
+				
+				if let otherPosition = position.left?[keyPath: direction] {
+					let canCapture = if let otherPiece = self[otherPosition], (otherPiece.isWhite != piece.isWhite || friendlyFire) { true } else { false }
+					let canEnPassant = otherPosition == enPassant
+					if canCapture || canEnPassant {
+						add(move: otherPosition, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+					}
+				}
+				
+				if let otherPosition = position.right?[keyPath: direction] {
+					let canCapture = if let otherPiece = self[otherPosition], (otherPiece.isWhite != piece.isWhite || friendlyFire) { true } else { false }
+					let canEnPassant = otherPosition == enPassant
+					if canCapture || canEnPassant {
+						add(move: otherPosition, to: &pseudoLegalMoves, from: piece, friendlyFire: friendlyFire)
+					}
+				}
+		}
+		
+		return pseudoLegalMoves
+	}
+	
+	func legalMoves(for position: Position, friendlyFire: Bool = false) -> [Position] {
+		pseudoLegalMoves(for: position, friendlyFire: friendlyFire).filter { newPosition in
 			var copy = self
 			try! copy.move(from: position, to: newPosition)
 			return !copy.isCheck(forWhite: !copy.isWhiteTurn)
 		}
 	}
-    
-    func legalMoves(forWhite isWhite: Bool) -> [Position: [Position]] {
-        piecePositions(forWhite: isWhite).reduce(into: [:]) { partialResult, position in
-            partialResult[position] = legalMoves(for: position)
-        }
-    }
-    
-    func attackerCount(forWhite isWhite: Bool, at position: Position) -> Int {
-        var count = 0
-        for piecePosition in piecePositions(forWhite: !isWhite) {
-            if piecePosition == position {
-                count += 1
-            }
-        }
-        return count
-    }
 	
-	mutating func move(from: Position, to: Position) throws(BoardException) {
+	func legalMoves(forWhite isWhite: Bool, friendlyFire: Bool = false) -> [Position: [Position]] {
+		piecePositions(forWhite: isWhite).reduce(into: [:]) { partialResult, position in
+			let legalMoves = legalMoves(for: position, friendlyFire: friendlyFire)
+			if !legalMoves.isEmpty {
+				partialResult[position] = legalMoves
+			}
+		}
+	}
+	
+	mutating func move(from: Position, to: Position) throws(MoveException) {
 		if from.x == to.x && from.y == to.y {
-			throw BoardException.moveToSameField
+			throw MoveException.moveToSameField
 		}
 		guard let piece = self[from] else {
-			throw BoardException.noPieceToMove
+			throw MoveException.noPieceToMove
 		}
 		
 		if to == enPassant {
@@ -413,96 +438,11 @@ struct ChessBoard: CustomStringConvertible {
 		isWhiteTurn.toggle()
 	}
 	
-	subscript(_ position: Position) -> Piece? {
-		get {
-			squares[position.y][position.x]
-		}
-		set {
-			squares[position.y][position.x] = newValue
-		}
-	}
-}
-
-struct PlayerInformation {
-	var castleKing: Bool
-	var castleQueen: Bool
-	
-	init(castleKing: Bool, castleQueen: Bool) {
-		self.castleKing = castleKing
-		self.castleQueen = castleQueen
-	}
-}
-
-struct Piece: CustomStringConvertible, Equatable {
-	let isWhite: Bool
-	let type: PieceType
-	
-	var description: String {
-		isWhite ? type.rawValue.uppercased() : type.rawValue
-	}
-	
-	var assetName: String {
-		"\(isWhite ? "White" : "Black")_\(self.type.rawValue)"
-	}
-	
-	init(isWhite: Bool, type: PieceType) {
-		self.isWhite = isWhite
-		self.type = type
-	}
-	
-	init?(symbol: String) {
-		if symbol.count != 1 {
-			return nil
-		}
-		guard let pieceType = PieceType(rawValue: symbol.lowercased()) else {
-			return nil
-		}
-		type = pieceType
-		isWhite = symbol[symbol.startIndex].isUppercase
-	}
-	
-	static func ==(lhs: Piece, rhs: Piece) -> Bool {
-		lhs.isWhite == rhs.isWhite && lhs.type == rhs.type
-	}
-}
-
-enum PieceType: String {
-	case king = "k"
-	case queen = "q"
-	case rook = "r"
-	case bishop = "b"
-	case knight = "n"
-	case pawn = "p"
-	case none = "-"
-}
-
-enum BoardException: Error {
-	case moveToSameField
-	case noPieceToMove
-}
-
-enum PotentialMoveClassification {
-	case free
-	case capture
-	case blocked
-}
-
-enum RemisReason {
-    case stalemate
-    case repetition
-    case fiftyMoves
-    case impossibleCheckmate
-    case consent
-    case timeOut
-}
-
-extension ChessBoard {
-	
 	@discardableResult
-	func add(move position: Position?, to list: inout [Position], from piece: Piece) -> PotentialMoveClassification {
+	func add(move position: Position?, to list: inout [Position], from piece: Piece, friendlyFire: Bool) -> PotentialMoveClassification {
 		guard let position else { return .blocked }
 		if let otherPiece = self[position] {
-			if piece.isWhite == otherPiece.isWhite {
+			if piece.isWhite == otherPiece.isWhite && !friendlyFire {
 				return .blocked
 			} else {
 				list.append(position)
@@ -513,13 +453,66 @@ extension ChessBoard {
 		return .free
 	}
 	
-	func add(direction keyPath: KeyPath<Position, Position?>, to list: inout [Position], from start: Position) {
+	func add(direction keyPath: KeyPath<Position, Position?>, to list: inout [Position], from start: Position, friendlyFire: Bool) {
 		guard let piece = self[start] else {
 			return
 		}
 		var position: Position? = start
 		repeat {
 			position = position?[keyPath: keyPath]
-		} while add(move: position, to: &list, from: piece) == .free
+		} while add(move: position, to: &list, from: piece, friendlyFire: friendlyFire) == .free
+	}
+	
+	enum PotentialMoveClassification {
+		case free
+		case capture
+		case blocked
+	}
+}
+
+// MARK: Evaluation
+extension ChessBoard {
+	
+	func attackingMap(forWhite isWhite: Bool) -> [[[Position]]: [Position]] {
+		var map: [[[Position]]: [Position]] = [:]
+		
+		return map
+	}
+	
+	func piecePositions(forWhite isWhite: Bool) -> [Position] {
+		var positions: [Position] = []
+		for x in 0..<8 {
+			for y in 0..<8 {
+				if self[Position(x, y)!]?.isWhite == isWhite {
+					positions.append(Position(x, y)!)
+				}
+			}
+		}
+		return positions
+	}
+	
+	func protectors(forWhite isWhite: Bool, at position: Position) -> [Position] {
+		var copy = self
+		copy[position] = nil
+		return copy.attackers(forWhite: !isWhite, at: position)
+	}
+	
+	func protecting(from position: Position) -> [Position] {
+		legalMoves(for: position, friendlyFire: true).filter { self[$0]?.isWhite == self[position]?.isWhite }
+	}
+	
+	func attackers(forWhite isWhite: Bool, at position: Position) -> [Position] {
+		var attackers: [Position] = []
+		for piecePosition in piecePositions(forWhite: !isWhite) {
+			if legalMoves(for: piecePosition).contains(position) {
+				attackers.append(piecePosition)
+				continue
+			}
+		}
+		return attackers
+	}
+	
+	func attacking(from position: Position) -> [Position] {
+		legalMoves(for: position).filter { self[$0]?.isWhite == self[position]?.isWhite }
 	}
 }

@@ -8,25 +8,23 @@
 import SwiftUI
 
 struct ChessBoardView: View {
-	let whiteColor = Color.white
-	let blackColor = Color.brown
 	
 	var chessGame: ChessGame = ChessGame()
     var isInteractive: Bool = true
-	@State private var selected: Position?
     @State private var boardSize: CGFloat = 0
     @State private var viewSize: CGSize = CGSize(width: 0, height: 0)
     @State private var showCheckMate = false
+	@State private var showRemis = false
 	
 	var selectedPiece: Piece? {
-		guard let selected else {
+		guard let selected = chessGame.selected else {
 			return nil
 		}
 		return chessGame.board[selected]
 	}
 	
 	var possibleMoves: [Position] {
-		guard let selected else {
+		guard let selected = chessGame.selected else {
 			return []
 		}
 		return chessGame.board.legalMoves(for: selected)
@@ -71,8 +69,29 @@ struct ChessBoardView: View {
                 if chessGame.board[possibleMove] == nil {
                     context.fill(Path(ellipseIn: CGRect(x: pixelPosition.0 + padding, y: pixelPosition.1 + padding, width: ellipseSize, height: ellipseSize)), with: .color(.black.opacity(0.35)))
                 } else {
-                    // TODO: Coolere Umrandung für gegnerische Figur
-                    context.fill(Path(ellipseIn: CGRect(x: pixelPosition.0 + padding, y: pixelPosition.1 + padding, width: ellipseSize, height: ellipseSize)), with: .color(.black.opacity(0.5)))
+					let radius = fieldSize / 7
+					let outlinePadding = fieldSize / 11
+					print(fieldSize, radius, outlinePadding)
+					let centers = [
+						CGPoint(x: pixelPosition.0 + outlinePadding + radius, y: pixelPosition.1 + outlinePadding + radius),
+						CGPoint(x: pixelPosition.0 + fieldSize - outlinePadding - radius, y: pixelPosition.1 + outlinePadding + radius),
+						CGPoint(x: pixelPosition.0 + fieldSize - outlinePadding - radius, y: pixelPosition.1 + fieldSize - outlinePadding - radius),
+						CGPoint(x: pixelPosition.0 + outlinePadding + radius, y: pixelPosition.1 + fieldSize - outlinePadding - radius)
+					]
+					for i in 0..<4 {
+						let startAngle = Double(i * 90 + 180)
+						let endAngle = startAngle + 90
+						var path = Path()
+						
+						path.addArc(
+							center: centers[i],
+							radius: CGFloat(radius),
+							startAngle: .degrees(startAngle),
+							endAngle: .degrees(endAngle),
+							clockwise: false
+						)
+						context.stroke(path, with: .color(.black.opacity(0.35)), lineWidth: 6)
+					}
                 }
             }
         }
@@ -87,35 +106,42 @@ struct ChessBoardView: View {
         .onTapGesture { location in
             guard isInteractive else { return }
             guard let newSelection = pixelToField((location.x, location.y)) else {
-                selected = nil
+				chessGame.selected = nil
                 return
             }
-            if let selected, possibleMoves.contains(newSelection), chessGame.board[selected]?.isWhite == chessGame.board.isWhiteTurn {
-                do throws(BoardException) {
+			if let selected = chessGame.selected, possibleMoves.contains(newSelection), chessGame.board[selected]?.isWhite == chessGame.board.isWhiteTurn {
+                do throws(MoveException) {
                     try chessGame.board.move(from: selected, to: newSelection)
                     
                     if chessGame.board.isCheckMate(forWhite: chessGame.board.isWhiteTurn) {
                         showCheckMate = true
                     }
+					
+					if chessGame.board.remis() != nil {
+						showRemis = true
+					}
                 } catch {
                     print(error.localizedDescription)
                 }
-                self.selected = nil
+                chessGame.selected = nil
                 return
             }
-            guard newSelection != selected else {
-                selected = nil
+			guard newSelection != chessGame.selected else {
+				chessGame.selected = nil
                 return
             }
             if chessGame.board[newSelection] == nil {
-                selected = nil
+				chessGame.selected = nil
             } else {
-                selected = newSelection
+				chessGame.selected = newSelection
             }
         }
         .alert("Checkmate!", isPresented: $showCheckMate) { } message: {
             Text("\(!chessGame.board.isWhiteTurn ? "White" : "Black") won after \(chessGame.board.fullMoves) moves.")
         }
+		.alert("Remis!", isPresented: $showRemis) {} message: {
+			Text("The game ended in Remis due to \(chessGame.board.remis()?.explanation ?? "an unknown reason").")
+		}
     }
 	
 	func pixelToField(_ position: (CGFloat, CGFloat)) -> Position? {
@@ -136,11 +162,11 @@ struct ChessBoardView: View {
 	}
 	
 	func inverseFieldColor(for position: Position) -> Color {
-		isWhiteField(position) ? blackColor : whiteColor
+		isWhiteField(position) ? chessGame.blackColor : chessGame.whiteColor
 	}
 	
 	func fieldColor(for position: Position) -> Color {
-		isWhiteField(position) ? whiteColor : blackColor
+		isWhiteField(position) ? chessGame.whiteColor : chessGame.blackColor
 	}
 	
 	func isWhiteField(_ position: Position) -> Bool {

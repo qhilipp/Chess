@@ -9,17 +9,28 @@ import SwiftUI
 
 struct ContentView: View {
 	
-    @State var fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-    @State var showInspector = true
+	@State var showAddGame = false
     
     var body: some View {
         NavigationSplitView {
-            List {
-                Text("Moin")
-            }
+			List {
+				Text("Moin")
+			}
         } detail: {
             ChessGameView()
         }
+		.toolbar {
+			ToolbarItem {
+				Button {
+					showAddGame = true
+				} label: {
+					Image(systemName: "square.and.pencil")
+				}
+			}
+		}
+		.sheet(isPresented: $showAddGame) {
+			GameCreationView()
+		}
     }
 }
 

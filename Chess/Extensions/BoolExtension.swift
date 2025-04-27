@@ -9,4 +9,8 @@ import Foundation
 
 extension Bool: @retroactive Identifiable {
     public var id: Bool { self }
+	
+	var value: Int {
+		self ? 1 : -1
+	}
 }
