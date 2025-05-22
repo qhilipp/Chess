@@ -15,7 +15,7 @@ struct ChessStatsView: View {
     var body: some View {
         Form {
 			Section {
-				LabeledContent("Turn", value: chessGame.board.isWhiteTurn ? "White" : "Black")
+				LabeledContent("Turn", value: chessGame.board.isWhiteTurn.name)
 				Button {
 					showSelectedInformation = true
 				} label: {

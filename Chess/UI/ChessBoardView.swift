@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct ChessBoardView: View {
 	
 	var chessGame: ChessGame = ChessGame()
     var isInteractive: Bool = true
+	@State var player: AVAudioPlayer?
     @State private var boardSize: CGFloat = 0
     @State private var viewSize: CGSize = CGSize(width: 0, height: 0)
     @State private var showCheckMate = false
@@ -71,7 +73,6 @@ struct ChessBoardView: View {
                 } else {
 					let radius = fieldSize / 7
 					let outlinePadding = fieldSize / 11
-					print(fieldSize, radius, outlinePadding)
 					let centers = [
 						CGPoint(x: pixelPosition.0 + outlinePadding + radius, y: pixelPosition.1 + outlinePadding + radius),
 						CGPoint(x: pixelPosition.0 + fieldSize - outlinePadding - radius, y: pixelPosition.1 + outlinePadding + radius),
@@ -109,16 +110,33 @@ struct ChessBoardView: View {
 				chessGame.selected = nil
                 return
             }
-			if let selected = chessGame.selected, possibleMoves.contains(newSelection), chessGame.board[selected]?.isWhite == chessGame.board.isWhiteTurn {
+			if let selected = chessGame.selected, possibleMoves.contains(newSelection), chessGame.board[selected]?.isWhite == chessGame.board.isWhiteTurn, chessGame.currentPlayer == .human {
                 do throws(MoveException) {
+					if chessGame.board[newSelection] == nil {
+						playSound("move")
+					} else {
+						playSound("capture")
+					}
+					
                     try chessGame.board.move(from: selected, to: newSelection)
-                    
+					
                     if chessGame.board.isCheckMate(forWhite: chessGame.board.isWhiteTurn) {
                         showCheckMate = true
                     }
 					
 					if chessGame.board.remis() != nil {
 						showRemis = true
+					}
+					
+					if case .bot(let bot) = chessGame.currentPlayer, !showCheckMate, !showRemis {
+						DispatchQueue.main.async {
+							let (from, to) = bot.generateMove(for: chessGame.board)
+							do {
+								try chessGame.board.move(from: from, to: to)
+							} catch {
+								print(error.localizedDescription)
+							}
+						}
 					}
                 } catch {
                     print(error.localizedDescription)
@@ -137,7 +155,7 @@ struct ChessBoardView: View {
             }
         }
         .alert("Checkmate!", isPresented: $showCheckMate) { } message: {
-            Text("\(!chessGame.board.isWhiteTurn ? "White" : "Black") won after \(chessGame.board.fullMoves) moves.")
+			Text("\(chessGame.board.isWhiteTurn.name) won after \(chessGame.board.fullMoves) moves.")
         }
 		.alert("Remis!", isPresented: $showRemis) {} message: {
 			Text("The game ended in Remis due to \(chessGame.board.remis()?.explanation ?? "an unknown reason").")
@@ -171,6 +189,17 @@ struct ChessBoardView: View {
 	
 	func isWhiteField(_ position: Position) -> Bool {
 		(position.x + position.y) % 2 == 0
+	}
+	
+	func playSound(_ fileName: String) {
+		if let url = Bundle.main.url(forResource: fileName, withExtension: "mp3") {
+			do {
+				player = try AVAudioPlayer(contentsOf: url)
+				player?.play()
+			} catch {
+				print("Fehler: \(error.localizedDescription)")
+			}
+		}
 	}
 	
 }

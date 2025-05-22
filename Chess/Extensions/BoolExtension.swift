@@ -13,4 +13,8 @@ extension Bool: @retroactive Identifiable {
 	var value: Int {
 		self ? 1 : -1
 	}
+	
+	var name: String {
+		self ? "White" : "Black"
+	}
 }

@@ -19,10 +19,14 @@ class ChessGame {
 	var whiteColor: Color
 	var blackColor: Color
 	
+	var currentPlayer: ChessPlayer {
+		board.isWhiteTurn ? white : black
+	}
+	
     init(name: String? = nil, fen: String = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {
 		self.board = ChessBoard(fen: fen)!
-		self.white = HumanChessPlayer()
-		self.black = HumanChessPlayer()
+		self.white = .human
+		self.black = .bot(MinimaxBot(evaluator: FastEvaluator()))
 		self.whiteColor = .white
 		self.blackColor = .brown
         if let name {

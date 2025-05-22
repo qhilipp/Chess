@@ -28,7 +28,7 @@ struct BasicStatisticsView: View {
 		.popover(isPresented: $showPiecePositions) {
 			NavigationStack {
 				PositionsList(for: chessGame.board.piecePositions(forWhite: isWhite), chessGame: $chessGame)
-					.navigationTitle("\(isWhite ? "White" : "Black") pieces")
+					.navigationTitle("\(isWhite.name) pieces")
 			}
 		}
 		Button {
@@ -39,7 +39,7 @@ struct BasicStatisticsView: View {
 		.popover(isPresented: $showLegalMoves) {
 			NavigationStack {
 				PositionsList(for: chessGame.board.legalMoves(forWhite: isWhite), chessGame: $chessGame)
-					.navigationTitle("\(isWhite ? "White" : "Black") legal moves")
+					.navigationTitle("\(isWhite.name) legal moves")
 			}
 		}
 	}

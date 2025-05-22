@@ -14,29 +14,34 @@ struct PieceInformationView: View {
 	let selected: Position
 	
 	var body: some View {
-		Form {
-			if let piece = chessGame.board[selected] {
-				Section {
-					Image(piece.assetName)
+		if let piece = chessGame.board[selected] {
+			Form {
+				if let piece = chessGame.board[selected] {
+					Section {
+						Image(piece.assetName)
+					}
+				}
+				Section("Moves") {
+					MoveInformationView(title: "Pseudo legal moves", chessGame: $chessGame, positions: chessGame.board.pseudoLegalMoves(for: selected))
+					MoveInformationView(title: "Legal moves", chessGame: $chessGame, positions: chessGame.board.legalMoves(for: selected))
+					MoveInformationView(title: "Protectod by", chessGame: $chessGame, positions: chessGame.board.protectors(forWhite: piece.isWhite, at: selected))
+					MoveInformationView(title: "Protecting", chessGame: $chessGame, positions: chessGame.board.protecting(from: selected))
+					MoveInformationView(title: "Attacked by", chessGame: $chessGame, positions: chessGame.board.attackers(forWhite: piece.isWhite, at: selected))
+					MoveInformationView(title: "Attacking", chessGame: $chessGame, positions: chessGame.board.attacking(from: selected))
+				}
+				Section("Evaluation") {
+					ForEach(GameEvaluators.allCases, id: \.id) { evaluator in
+						LabeledContent(evaluator.rawValue, value: evaluator.evaluator.evaluate(position: selected, on: chessGame.board).description)
+					}
 				}
 			}
-			Section("Moves") {
-				MoveInformationView(title: "Legal moves", chessGame: $chessGame, positions: chessGame.board.legalMoves(for: selected))
-				MoveInformationView(title: "Protectod by", chessGame: $chessGame, positions: chessGame.board.protectors(forWhite: chessGame.board[selected]!.isWhite, at: selected))
-				MoveInformationView(title: "Protecting", chessGame: $chessGame, positions: chessGame.board.protecting(from: selected))
-				MoveInformationView(title: "Attacked by", chessGame: $chessGame, positions: chessGame.board.attackers(forWhite: chessGame.board[selected]!.isWhite, at: selected))
-				MoveInformationView(title: "Attacking", chessGame: $chessGame, positions: chessGame.board.attacking(from: selected))
+			.formStyle(.grouped)
+			.navigationTitle("\(selected.algebraic) - \(chessGame.board[selected]!.name)")
+			.onAppear {
+				chessGame.selected = self.selected
 			}
-			Section("Evaluation") {
-				ForEach(GameEvaluators.allCases, id: \.id) { evaluator in
-					LabeledContent(evaluator.rawValue, value: evaluator.evaluator.evaluate(position: selected, on: chessGame.board).description)
-				}
-			}
-		}
-		.formStyle(.grouped)
-		.navigationTitle("\(selected.algebraic) - \(chessGame.board[selected]!.name)")
-		.onAppear {
-			chessGame.selected = self.selected
+		} else {
+			ContentUnavailableView("No piece selected", systemImage: "quenstionmar.circle", description: Text("There is no piece at the selected position"))
 		}
 	}
 }

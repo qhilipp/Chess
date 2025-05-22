@@ -209,13 +209,9 @@ extension ChessBoard {
 	}
 	
 	func remis() -> RemisReason? {
-		remis(forWhite: isWhiteTurn) ?? remis(forWhite: !isWhiteTurn)
-	}
-	
-	func remis(forWhite isWhite: Bool) -> RemisReason? {
-		if isCheckmateImpossible(forWhite: isWhite) {
+		if isCheckmateImpossible(forWhite: true) && isCheckmateImpossible(forWhite: false) {
 			.impossibleCheckmate
-		} else if !isCheck(forWhite: isWhite) && legalMoves(forWhite: isWhite).isEmpty {
+		} else if !isCheck(forWhite: isWhiteTurn) && legalMoves(forWhite: isWhiteTurn).isEmpty {
 			.stalemate
 		} else {
 			nil
@@ -230,13 +226,9 @@ extension ChessBoard {
 		guard let kingPosition = kingPosition(forWhite: isWhite) else {
 			return true
 		}
-		for x in 0..<8 {
-			for y in 0..<8 {
-				if self[Position(x, y)!]?.isWhite == !isWhite {
-					if pseudoLegalMoves(for: Position(x, y)!).contains(kingPosition) {
-						return true
-					}
-				}
+		for position in piecePositions(forWhite: !isWhite) {
+			if pseudoLegalMoves(for: position).contains(kingPosition) {
+				return true
 			}
 		}
 		return false
@@ -364,7 +356,7 @@ extension ChessBoard {
 		pseudoLegalMoves(for: position, friendlyFire: friendlyFire).filter { newPosition in
 			var copy = self
 			try! copy.move(from: position, to: newPosition)
-			return !copy.isCheck(forWhite: !copy.isWhiteTurn)
+			return !copy.isCheck(forWhite: self[position]!.isWhite)
 		}
 	}
 	
@@ -473,12 +465,6 @@ extension ChessBoard {
 // MARK: Evaluation
 extension ChessBoard {
 	
-	func attackingMap(forWhite isWhite: Bool) -> [[[Position]]: [Position]] {
-		var map: [[[Position]]: [Position]] = [:]
-		
-		return map
-	}
-	
 	func piecePositions(forWhite isWhite: Bool) -> [Position] {
 		var positions: [Position] = []
 		for x in 0..<8 {
@@ -504,10 +490,9 @@ extension ChessBoard {
 	func attackers(forWhite isWhite: Bool, at position: Position) -> [Position] {
 		var attackers: [Position] = []
 		for piecePosition in piecePositions(forWhite: !isWhite) {
-			if legalMoves(for: piecePosition).contains(position) {
-				attackers.append(piecePosition)
-				continue
-			}
+//			if legalMoves(for: piecePosition).contains(position) {
+//				attackers.append(piecePosition)
+//			}
 		}
 		return attackers
 	}

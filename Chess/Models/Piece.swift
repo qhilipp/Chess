@@ -16,11 +16,11 @@ struct Piece: CustomStringConvertible, Equatable {
 	}
 	
 	var assetName: String {
-		"\(isWhite ? "White" : "Black")_\(self.type.rawValue)"
+		"\(isWhite.name)_\(self.type.rawValue)"
 	}
 	
 	var name: String {
-		"\(isWhite ? "White" : "Black") \(type.name)"
+		"\(isWhite.name) \(type.name)"
 	}
 	
 	var value: Int {
